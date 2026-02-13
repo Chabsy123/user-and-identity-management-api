@@ -6,8 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>user_and_identity_management_api</RootNamespace>
 
-    <!-- Temporary: avoid generating package build props for static web assets -->
+    <!-- Workaround: stop generating project build props files for static web assets -->
     <StaticWebAssetsDisableProjectBuildPropsFileGeneration>true</StaticWebAssetsDisableProjectBuildPropsFileGeneration>
+    <StaticWebAssetsDisableProjectBuildMultiTargetingPropsFileGeneration>true</StaticWebAssetsDisableProjectBuildMultiTargetingPropsFileGeneration>
+    <StaticWebAssetsDisableProjectBuildTransitivePropsFileGeneration>true</StaticWebAssetsDisableProjectBuildTransitivePropsFileGeneration>
   </PropertyGroup>
 
   <ItemGroup>

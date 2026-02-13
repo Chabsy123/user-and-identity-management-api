@@ -5,16 +5,28 @@ using user_and_identity_management_api.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-//for entity framework
+// Configuration
 var configuration = builder.Configuration;
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
 
-//for identity;
+// --- Validate connection string early so you get a clear error ---
+var defaultConn = configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(defaultConn))
+{
+    // Helpful explicit error — makes root cause obvious instead of a nested SqlException later
+    throw new InvalidOperationException("Connection string 'DefaultConnection' is missing. Check appsettings.json / environment variables.");
+}
+
+// Add services to the container.
+// for entity framework
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(defaultConn));
+
+// for identity
 builder.Services.AddIdentity<IdentityUser, IdentityRole>()
-.AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
 
+// authentication (you will likely configure JwtBearer options here)
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -22,10 +34,8 @@ builder.Services.AddAuthentication(options =>
     options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
 });
 
-//add services to the container.
-
+// Add controllers, swagger
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -40,6 +50,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Ensure authentication middleware is added before authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
