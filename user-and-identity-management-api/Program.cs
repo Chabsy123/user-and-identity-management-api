@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using user_and_identity_management_api.Models;
+using user_management_service.Models;
+using user_management_service.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +35,21 @@ builder.Services.AddAuthentication(options =>
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
 });
+
+//Add JWT Bearer Authorization
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtKey = builder.Configuration["Jwt:SigningKey"];
+
+//Add Email Configs
+var emailConfig = builder.Configuration
+    .GetSection("EmailConfiguration")
+    .Get<EmailConfiguration>()
+    ?? throw new Exception("Email configuration is missing");
+
+builder.Services.AddSingleton(emailConfig);
+
+
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Add controllers, swagger
 builder.Services.AddControllers();

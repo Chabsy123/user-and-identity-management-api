@@ -1,8 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using user_and_identity_management_api.Models;
 using user_and_identity_management_api.Models.Authentication.SignUp;
+using user_management_service.Models;
+using user_management_service.Services;
 
 namespace user_and_identity_management_api.Controllers
 {
@@ -12,37 +13,39 @@ namespace user_and_identity_management_api.Controllers
     {
         private readonly UserManager<IdentityUser> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
-        private readonly IConfiguration _configuration;
-        public AuthenticationController(UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration)
+        //private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
+        public AuthenticationController(UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager, IEmailService emailService)
         {
             _userManager = userManager;
             _roleManager = roleManager;
-            _configuration = configuration;
+            //_configuration = configuration;
+            _emailService = emailService;
         }
 
         [HttpPost]
-        public async Task<IActionResult> Register ([FromBody] RegisterUser registerUser, string role)
+        public async Task<IActionResult> Register([FromBody] RegisterUser registerUser, string role)
         {
             // Validate email is not null or empty
             if (string.IsNullOrWhiteSpace(registerUser.Email))
             {
                 return StatusCode(StatusCodes.Status400BadRequest,
-                    new Response{ Status = "Error", Message = "Email cannot be null or empty." });
+                    new Response { Status = "Error", Message = "Email cannot be null or empty." });
             }
 
             //check user exists
             var userExists = await _userManager.FindByEmailAsync(registerUser.Email);
             if (userExists != null)
-            {   
-                return StatusCode(StatusCodes.Status403Forbidden, 
-                    new Response{ Status = "Error", Message = "User already exists!" });
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new Response { Status = "Error", Message = "User already exists!" });
             }
 
             // Validate password is not null
             if (string.IsNullOrWhiteSpace(registerUser.Password))
             {
                 return StatusCode(StatusCodes.Status400BadRequest,
-                    new Response{ Status = "Error", Message = "Password cannot be null or empty." });
+                    new Response { Status = "Error", Message = "Password cannot be null or empty." });
             }
 
             //Add the user in the database
@@ -62,7 +65,7 @@ namespace user_and_identity_management_api.Controllers
                 }
                 //Assign role to the user
                 await _userManager.AddToRoleAsync(user, role);
-                  return StatusCode(StatusCodes.Status201Created,
+                return StatusCode(StatusCodes.Status201Created,
                     new Response { Status = "Success", Message = "User created successfully!" });
             }
             else
@@ -74,8 +77,21 @@ namespace user_and_identity_management_api.Controllers
                         Message = "Role does not exist."
                     });
             }
-
-            
         }
-    }
+
+            [HttpGet]
+            public IActionResult TestEmail()
+            {
+                var message = new Message(new string[]
+                    {"chukwusydney0@gmail.com"}, "Test", "<h1>Subscribe to my channel!</h1>");
+
+                _emailService.SendEmail(message);
+                return StatusCode(StatusCodes.Status200OK,
+                    new Response
+                    {
+                        Status = "Success",
+                        Message = "Email sent successfully!"
+                    });
+            }
+    } 
 }
