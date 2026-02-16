@@ -96,7 +96,7 @@ namespace user_and_identity_management_api.Controllers
         {
             var user = await _userManager.FindByEmailAsync(email);
 
-            if (user != null)
+            if (user == null)
             {
                 return StatusCode(StatusCodes.Status404NotFound,
                     new Response { Status = "Error", Message = "User not found!" });
@@ -113,37 +113,69 @@ namespace user_and_identity_management_api.Controllers
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new Response { Status = "Error", Message = "Email confirmation failed." });
         }
-
         [HttpPost("Login")]
         public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
         {
-            //checking the user
+            // 1️⃣ Check if Username or Password is null/empty
+            if (string.IsNullOrWhiteSpace(loginModel.Username))
+                return BadRequest("Username is required.");
+
+            if (string.IsNullOrWhiteSpace(loginModel.Password))
+                return BadRequest("Password is required.");
+
+            // 2️⃣ Find user by username
             var user = await _userManager.FindByNameAsync(loginModel.Username);
 
-            if (user != null && await _userManager.CheckPasswordAsync(user, loginModel.Password))
+            // 3️⃣ Check if user exists or password is incorrect
+            if (user == null || !await _userManager.CheckPasswordAsync(user, loginModel.Password))
             {
-                //claimlist creation
-                var authClaims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.Name, user.UserName),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                };
-                var userRoles = await _userManager.GetRolesAsync(user);
-                foreach (var role in userRoles)
-                {
-                    authClaims.Add(new Claim(ClaimTypes.Role, role));
-                }
-                //returning the token
-                var jwtToken = GetToken(authClaims);
-                return Ok(new
-                {
-                    token = new JwtSecurityTokenHandler().WriteToken(jwtToken),
-                    expiration = jwtToken.ValidTo
-                });
+                // THIS is where the Unauthorized() goes
+                return Unauthorized("Invalid login attempt");
             }
 
-            return Unauthorized();
+            // 4️⃣ If we reach here → user exists and password is correct
+            var username = user.UserName ?? throw new Exception("Username is null for this user");
+
+            // 5️⃣ Create claims
+            var authClaims = new List<Claim>
+    {
+        new Claim(ClaimTypes.Name, username),
+        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+    };
+
+            var userRoles = await _userManager.GetRolesAsync(user);
+            foreach (var role in userRoles)
+            {
+                authClaims.Add(new Claim(ClaimTypes.Role, role));
+            }
+
+            // 6️⃣ JWT Secret validation
+            var jwtSecret = _configuration["JWT:Secret"];
+            if (string.IsNullOrWhiteSpace(jwtSecret))
+                throw new Exception("JWT Secret is missing in configuration");
+
+            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
+
+            // 7️⃣ Generate token
+            var jwtToken = new JwtSecurityToken(
+                issuer: _configuration["JWT:ValidIssuer"],
+                audience: _configuration["JWT:ValidAudience"],
+                expires: DateTime.Now.AddHours(3),
+                claims: authClaims,
+                signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
+            );
+
+            // 8️⃣ Return the token
+            return Ok(new
+            {
+                token = new JwtSecurityTokenHandler().WriteToken(jwtToken),
+                expiration = jwtToken.ValidTo
+            });
         }
+
+
+
+
         //method to generate the token
         private JwtSecurityToken GetToken(List<Claim> authClaims)
         {
