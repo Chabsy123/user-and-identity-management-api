@@ -28,6 +28,11 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
+//Add config for required email
+builder.Services.Configure<IdentityOptions>(
+    opts => opts.SignIn.RequireConfirmedEmail = true
+    );
+
 // authentication (you will likely configure JwtBearer options here)
 builder.Services.AddAuthentication(options =>
 {

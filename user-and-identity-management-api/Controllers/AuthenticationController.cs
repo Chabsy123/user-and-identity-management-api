@@ -65,8 +65,15 @@ namespace user_and_identity_management_api.Controllers
                 }
                 //Assign role to the user
                 await _userManager.AddToRoleAsync(user, role);
+
+                //Add Token to verify email
+                var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                var confirmationLink = Url.Action("ConfirmEmail", "Authentication", new { token, email = user.Email }, Request.Scheme);
+                var message = new Message(new string[] { user.Email! }, "Email Confirmation Link", confirmationLink!);
+                _emailService.SendEmail(message);
+
                 return StatusCode(StatusCodes.Status201Created,
-                    new Response { Status = "Success", Message = "User created successfully!" });
+                    new Response { Status = "Success", Message = $"User created & Email sent to {user.Email} successfully!" });
             }
             else
             {
@@ -79,19 +86,30 @@ namespace user_and_identity_management_api.Controllers
             }
         }
 
-            [HttpGet]
-            public IActionResult TestEmail()
-            {
-                var message = new Message(new string[]
-                    {"chukwusydney0@gmail.com"}, "Test", "<h1>Subscribe to my channel!</h1>");
+        [HttpGet("ConfirmEmail")]
+        public async Task<IActionResult> ConfirmEmail(string token, string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
 
-                _emailService.SendEmail(message);
-                return StatusCode(StatusCodes.Status200OK,
-                    new Response
-                    {
-                        Status = "Success",
-                        Message = "Email sent successfully!"
-                    });
+            if (user != null)
+            {
+                return StatusCode(StatusCodes.Status404NotFound,
+                    new Response { Status = "Error", Message = "User not found!" });
             }
-    } 
+
+            var result = await _userManager.ConfirmEmailAsync(user, token);
+
+            if (result.Succeeded)
+            {
+                return StatusCode(StatusCodes.Status200OK,
+                    new Response { Status = "Success", Message = "Email confirmed successfully!" });
+            }
+
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new Response { Status = "Error", Message = "Email confirmation failed." });
+        }
+
+
+    }
 }
+    
