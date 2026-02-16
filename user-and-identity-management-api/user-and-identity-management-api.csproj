@@ -26,11 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Models\Authentication\Login\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\user-management-service\user-management-service.csproj" />
+  <ProjectReference Include="..\user-management-service\user-management-service.csproj" />
   </ItemGroup>
 
 </Project>
