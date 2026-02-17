@@ -17,12 +17,14 @@ namespace user_and_identity_management_api.Controllers
     public class AuthenticationController : ControllerBase
     {
         private readonly UserManager<IdentityUser> _userManager;
+        private readonly SignInManager<IdentityUser> _signInManager;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
         private readonly IEmailService _emailService;
-        public AuthenticationController(UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration, IEmailService emailService)
+        public AuthenticationController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration, IEmailService emailService)
         {
             _userManager = userManager;
+            _signInManager = signInManager;
             _roleManager = roleManager;
             _configuration = configuration;
             _emailService = emailService;
@@ -58,7 +60,8 @@ namespace user_and_identity_management_api.Controllers
             {
                 Email = registerUser.Email,
                 SecurityStamp = Guid.NewGuid().ToString(),
-                UserName = registerUser.Username
+                UserName = registerUser.Username,
+                TwoFactorEnabled = true
             };
             if (await _roleManager.RoleExistsAsync(role))
             {
@@ -113,64 +116,72 @@ namespace user_and_identity_management_api.Controllers
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new Response { Status = "Error", Message = "Email confirmation failed." });
         }
+
         [HttpPost("Login")]
         public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
         {
-            // 1️⃣ Check if Username or Password is null/empty
+            // 1️⃣ Check username and password
             if (string.IsNullOrWhiteSpace(loginModel.Username))
                 return BadRequest("Username is required.");
 
             if (string.IsNullOrWhiteSpace(loginModel.Password))
                 return BadRequest("Password is required.");
 
-            // 2️⃣ Find user by username
+            // 2️⃣ Find user
             var user = await _userManager.FindByNameAsync(loginModel.Username);
 
-            // 3️⃣ Check if user exists or password is incorrect
             if (user == null || !await _userManager.CheckPasswordAsync(user, loginModel.Password))
-            {
-                // THIS is where the Unauthorized() goes
                 return Unauthorized("Invalid login attempt");
-            }
 
-            // 4️⃣ If we reach here → user exists and password is correct
-            var username = user.UserName ?? throw new Exception("Username is null for this user");
+            // 3️⃣ Generate OTP
+            await _signInManager.SignOutAsync();
+            await _signInManager.PasswordSignInAsync(user, loginModel.Password, false, true);
 
-            // 5️⃣ Create claims
-            var authClaims = new List<Claim>
-    {
-        new Claim(ClaimTypes.Name, username),
-        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-    };
+            var otpToken = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
 
-            var userRoles = await _userManager.GetRolesAsync(user);
-            foreach (var role in userRoles)
+            // 4️⃣ Send OTP via email
+            var message = new Message(new string[] { user.Email! }, "OTP Confirmation", otpToken!);
+            _emailService.SendEmail(message);
+
+            // 5️⃣ Stop here — do NOT generate JWT yet
+            return Ok(new Response
             {
-                authClaims.Add(new Claim(ClaimTypes.Role, role));
-            }
-
-            // 6️⃣ JWT Secret validation
-            var jwtSecret = _configuration["JWT:Secret"];
-            if (string.IsNullOrWhiteSpace(jwtSecret))
-                throw new Exception("JWT Secret is missing in configuration");
-
-            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
-
-            // 7️⃣ Generate token
-            var jwtToken = new JwtSecurityToken(
-                issuer: _configuration["JWT:ValidIssuer"],
-                audience: _configuration["JWT:ValidAudience"],
-                expires: DateTime.Now.AddHours(3),
-                claims: authClaims,
-                signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
-            );
-
-            // 8️⃣ Return the token
-            return Ok(new
-            {
-                token = new JwtSecurityTokenHandler().WriteToken(jwtToken),
-                expiration = jwtToken.ValidTo
+                Status = "Success",
+                Message = $"OTP sent to your email at {user.Email}"
             });
+        }
+
+
+        [HttpPost("login-2FA")]
+        public async Task<IActionResult> LoginWithOTP(string code, string username)
+        {
+            var user = await _userManager.FindByNameAsync(username);
+            var signIn = await _signInManager.TwoFactorSignInAsync("Email", code, false, false);
+            if (signIn.Succeeded)
+            {
+                if (user != null)
+                {
+                    var authClaims = new List<Claim>
+                    {
+                        new Claim(ClaimTypes.Name, user.UserName ?? throw new Exception("Username is null for this user")),
+                        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                    };
+                    var userRoles = await _userManager.GetRolesAsync(user);
+                    foreach (var role in userRoles)
+                    {
+                        authClaims.Add(new Claim(ClaimTypes.Role, role));
+                    }
+
+                    var JWTToken = GetToken(authClaims);
+                    return Ok(new
+                    {
+                        token = new JwtSecurityTokenHandler().WriteToken(JWTToken),
+                        expiration = JWTToken.ValidTo
+                    });
+                }
+            }
+            return StatusCode(StatusCodes.Status404NotFound,
+           new Response { Status = "Success", Message = $"Invalid Code" });
         }
 
 
