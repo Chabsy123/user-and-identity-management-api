@@ -37,6 +37,8 @@ builder.Services.Configure<IdentityOptions>(
     opts => opts.SignIn.RequireConfirmedEmail = true
     );
 
+builder.Services.Configure<DataProtectionTokenProviderOptions>(opts => opts.TokenLifespan = TimeSpan.FromHours(10));
+
 // authentication (you will likely configure JwtBearer options here)
 builder.Services.AddAuthentication(options =>
 {
@@ -73,6 +75,7 @@ builder.Services.AddSingleton(emailConfig);
 
 
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IUserManagement, UserManagement>();
 
 // Add controllers, swagger
 builder.Services.AddControllers();

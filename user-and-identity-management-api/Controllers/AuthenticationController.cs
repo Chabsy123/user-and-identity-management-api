@@ -7,9 +7,10 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using user_and_identity_management_api.Models;
-using user_and_identity_management_api.Models.Authentication.Login;
 using user_and_identity_management_api.Models.Authentication.SignUp;
 using user_management_service.Models;
+using user_management_service.Models.Authentication.Login;
+using user_management_service.Models.Authentication.SignUp;
 using user_management_service.Services;
 
 namespace user_and_identity_management_api.Controllers
@@ -23,77 +24,27 @@ namespace user_and_identity_management_api.Controllers
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
         private readonly IEmailService _emailService;
-        public AuthenticationController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration, IEmailService emailService)
+        private readonly IUserManagement _user;
+        public AuthenticationController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, RoleManager<IdentityRole> roleManager,IUserManagement user, IConfiguration configuration, IEmailService emailService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _roleManager = roleManager;
+            _user = user;
             _configuration = configuration;
             _emailService = emailService;
         }
 
         [HttpPost]
-        public async Task<IActionResult> Register([FromBody] RegisterUser registerUser, string role)
+        public async Task<IActionResult> Register([FromBody] user_management_service.Models.Authentication.SignUp.RegisterUser registerUser, string role)
         {
-            // Validate email is not null or empty
-            if (string.IsNullOrWhiteSpace(registerUser.Email))
-            {
-                return StatusCode(StatusCodes.Status400BadRequest,
-                    new Response { Status = "Error", Message = "Email cannot be null or empty." });
-            }
+            var token = await _user.CreateUserWithTokenAsync(registerUser);
+            var confirmationLink = Url.Action("ConfirmEmail", "Authentication", new { token, email = registerUser.Email }, Request.Scheme);
+            var message = new Message(new string[] { registerUser.Email! }, "Email Confirmation Link", confirmationLink!);
+            _emailService.SendEmail(message);
 
-            //check user exists
-            var userExists = await _userManager.FindByEmailAsync(registerUser.Email);
-            if (userExists != null)
-            {
-                return StatusCode(StatusCodes.Status403Forbidden,
-                    new Response { Status = "Error", Message = "User already exists!" });
-            }
-
-            // Validate password is not null
-            if (string.IsNullOrWhiteSpace(registerUser.Password))
-            {
-                return StatusCode(StatusCodes.Status400BadRequest,
-                    new Response { Status = "Error", Message = "Password cannot be null or empty." });
-            }
-
-            //Add the user in the database
-            IdentityUser user = new()
-            {
-                Email = registerUser.Email,
-                SecurityStamp = Guid.NewGuid().ToString(),
-                UserName = registerUser.Username,
-                TwoFactorEnabled = true
-            };
-            if (await _roleManager.RoleExistsAsync(role))
-            {
-                var result = await _userManager.CreateAsync(user, registerUser.Password);
-                if (!result.Succeeded)
-                {
-                    return StatusCode(StatusCodes.Status500InternalServerError,
-                        new Response { Status = "Error", Message = "User creation failed! Please check user details and try again." });
-                }
-                //Assign role to the user
-                await _userManager.AddToRoleAsync(user, role);
-
-                //Add Token to verify email
-                var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                var confirmationLink = Url.Action("ConfirmEmail", "Authentication", new { token, email = user.Email }, Request.Scheme);
-                var message = new Message(new string[] { user.Email! }, "Email Confirmation Link", confirmationLink!);
-                _emailService.SendEmail(message);
-
-                return StatusCode(StatusCodes.Status201Created,
-                    new Response { Status = "Success", Message = $"User created & Email sent to {user.Email} successfully!" });
-            }
-            else
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    new Response
-                    {
-                        Status = "Error",
-                        Message = "Role does not exist."
-                    });
-            }
+            return StatusCode(StatusCodes.Status500InternalServerError,
+               new Response { Status = "Error", Message = "This User Does Not Exist" });
         }
 
         [HttpGet("ConfirmEmail")]
