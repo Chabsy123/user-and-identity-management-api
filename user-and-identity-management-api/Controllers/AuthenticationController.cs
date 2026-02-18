@@ -36,15 +36,21 @@ namespace user_and_identity_management_api.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Register([FromBody] user_management_service.Models.Authentication.SignUp.RegisterUser registerUser, string role)
+        public async Task<IActionResult> Register([FromBody] user_management_service.Models.Authentication.SignUp.RegisterUser registerUser)
         {
-            var token = await _user.CreateUserWithTokenAsync(registerUser);
-            var confirmationLink = Url.Action("ConfirmEmail", "Authentication", new { token, email = registerUser.Email }, Request.Scheme);
-            var message = new Message(new string[] { registerUser.Email! }, "Email Confirmation Link", confirmationLink!);
-            _emailService.SendEmail(message);
+            var tokenResponse = await _user.CreateUserWithTokenAsync(registerUser);
+            if (tokenResponse.IsSuccess)
+            {
+                await _user.AssignRoleToUserAsync(registerUser.Roles, tokenResponse.Response.User);
+                var confirmationLink = Url.Action("ConfirmEmail", "Authentication", new { tokenResponse.Response.Token, email = registerUser.Email }, Request.Scheme);
+                var message = new Message(new string[] { registerUser.Email! }, "Email Confirmation Link", confirmationLink!);
+                _emailService.SendEmail(message);
 
+                return StatusCode(StatusCodes.Status200OK,
+                    new Response { Status = "Success", Message = $"User created successfully! Please check your email to confirm your account." });
+            }
             return StatusCode(StatusCodes.Status500InternalServerError,
-               new Response { Status = "Error", Message = "This User Does Not Exist" });
+                new Response { Message = tokenResponse.Message, IsSuccess = false });
         }
 
         [HttpGet("ConfirmEmail")]
