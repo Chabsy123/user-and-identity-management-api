@@ -10,7 +10,7 @@ using user_and_identity_management_api.Models;
 using user_and_identity_management_api.Models.Authentication.SignUp;
 using user_management_service.Models;
 using user_management_service.Models.Authentication.Login;
-using user_management_service.Models.Authentication.SignUp;
+using user_management_service.Models.Authentication.User;
 using user_management_service.Services;
 
 namespace user_and_identity_management_api.Controllers
@@ -41,13 +41,23 @@ namespace user_and_identity_management_api.Controllers
             var tokenResponse = await _user.CreateUserWithTokenAsync(registerUser);
             if (tokenResponse.IsSuccess)
             {
-                await _user.AssignRoleToUserAsync(registerUser.Roles, tokenResponse.Response.User);
+                if (!tokenResponse.IsSuccess || tokenResponse.Response?.User == null)
+                {
+                    return BadRequest("User creation failed.");
+                }
+
+                var createdUser = tokenResponse.Response.User;
+                var roles = registerUser.Roles ?? new List<string>();
+
+                await _user.AssignRoleToUserAsync(roles, createdUser);
+
+                //await _user.AssignRoleToUserAsync(registerUser.Roles, tokenResponse.Response.User);
                 var confirmationLink = Url.Action("ConfirmEmail", "Authentication", new { tokenResponse.Response.Token, email = registerUser.Email }, Request.Scheme);
                 var message = new Message(new string[] { registerUser.Email! }, "Email Confirmation Link", confirmationLink!);
                 _emailService.SendEmail(message);
 
                 return StatusCode(StatusCodes.Status200OK,
-                    new Response { Status = "Success", Message = $"User created successfully! Please check your email to confirm your account." });
+                    new Response { IsSuccess = true, Message = tokenResponse.Message });
             }
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new Response { Message = tokenResponse.Message, IsSuccess = false });
@@ -79,36 +89,65 @@ namespace user_and_identity_management_api.Controllers
         [HttpPost("Login")]
         public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
         {
-            // 1️⃣ Check username and password
             if (string.IsNullOrWhiteSpace(loginModel.Username))
                 return BadRequest("Username is required.");
 
             if (string.IsNullOrWhiteSpace(loginModel.Password))
                 return BadRequest("Password is required.");
 
-            // 2️⃣ Find user
-            var user = await _userManager.FindByNameAsync(loginModel.Username);
+            var loginOtpResponse = await _user.GetOtpByLoginAsync(loginModel);
 
-            if (user == null || !await _userManager.CheckPasswordAsync(user, loginModel.Password))
-                return Unauthorized("Invalid login attempt");
-
-            // 3️⃣ Generate OTP
-            await _signInManager.SignOutAsync();
-            await _signInManager.PasswordSignInAsync(user, loginModel.Password, false, true);
-
-            var otpToken = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
-
-            // 4️⃣ Send OTP via email
-            var message = new Message(new string[] { user.Email! }, "OTP Confirmation", otpToken!);
-            _emailService.SendEmail(message);
-
-            // 5️⃣ Stop here — do NOT generate JWT yet
-            return Ok(new Response
+            if (loginOtpResponse.Response?.User != null)
             {
-                Status = "Success",
-                Message = $"OTP sent to your email at {user.Email}"
-            });
+                var user = loginOtpResponse.Response.User;
+
+                if (user.TwoFactorEnabled)
+                {
+                    var token = loginOtpResponse.Response.Token;
+                    var message = new Message(
+                        new string[] { user.Email ?? string.Empty },
+                        "OTP Confirmation",
+                        token
+                    );
+
+                    _emailService.SendEmail(message);
+
+                    return Ok(new Response
+                    {
+                        IsSuccess = loginOtpResponse.IsSuccess,
+                        Status = "Success",
+                        Message = $"OTP sent to email {user.Email}."
+                    });
+                }
+
+                if (await _userManager.CheckPasswordAsync(user, loginModel.Password))
+                {
+                    var authClaims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            };
+
+                    var userRoles = await _userManager.GetRolesAsync(user);
+
+                    foreach (var role in userRoles)
+                    {
+                        authClaims.Add(new Claim(ClaimTypes.Role, role));
+                    }
+
+                    var JWTToken = GetToken(authClaims);
+
+                    return Ok(new
+                    {
+                        token = new JwtSecurityTokenHandler().WriteToken(JWTToken),
+                        expiration = JWTToken.ValidTo
+                    });
+                }
+            }
+
+            return Unauthorized();
         }
+
 
 
         [HttpPost("login-2FA")]
