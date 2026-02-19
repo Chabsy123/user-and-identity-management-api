@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using System.Reflection;
 using System.Text;
 using user_and_identity_management_api.Models;
+using user_management_data.Models;
 using user_management_service.Models;
 using user_management_service.Services;
 
@@ -34,7 +35,7 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>()
 
 //Add config for required email
 builder.Services.Configure<IdentityOptions>(
-    opts => opts.SignIn.RequireConfirmedEmail = true
+    opts => opts.SignIn.RequireConfirmedEmail = false
     );
 
 builder.Services.Configure<DataProtectionTokenProviderOptions>(opts => opts.TokenLifespan = TimeSpan.FromHours(10));
