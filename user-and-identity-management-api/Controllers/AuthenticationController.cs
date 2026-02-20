@@ -8,6 +8,7 @@ using System.Security.Claims;
 using System.Text;
 using user_and_identity_management_api.Models;
 using user_and_identity_management_api.Models.Authentication.SignUp;
+using user_management_data.Models;
 using user_management_service.Models;
 using user_management_service.Models.Authentication.Login;
 using user_management_service.Models.Authentication.User;
@@ -19,14 +20,14 @@ namespace user_and_identity_management_api.Controllers
     [ApiController]
     public class AuthenticationController : ControllerBase
     {
-        private readonly UserManager<IdentityUser> _userManager;
-        private readonly SignInManager<IdentityUser> _signInManager;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
         private readonly IEmailService _emailService;
         private readonly IUserManagement _user;
 
-        public AuthenticationController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, RoleManager<IdentityRole> roleManager, IUserManagement user, IConfiguration configuration, IEmailService emailService)
+        public AuthenticationController(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, RoleManager<IdentityRole> roleManager, IUserManagement user, IConfiguration configuration, IEmailService emailService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
