@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="user-and-identity-management-api/user-and-identity-management-api.csproj" />
+  <Project Path="user-management-data/user-management-data.csproj" Id="b4f96450-7ca5-4b23-92a5-11672beca36c" />
   <Project Path="user-management-service/user-management-service.csproj" />
 </Solution>
