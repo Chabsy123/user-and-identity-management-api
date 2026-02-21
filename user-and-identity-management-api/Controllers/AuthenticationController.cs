@@ -22,7 +22,7 @@ namespace user_and_identity_management_api.Controllers
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
-        private readonly RoleManager<IdentityRole> _roleManager;
+        //private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
         private readonly IEmailService _emailService;
         private readonly IUserManagement _user;
@@ -31,7 +31,7 @@ namespace user_and_identity_management_api.Controllers
         {
             _userManager = userManager;
             _signInManager = signInManager;
-            _roleManager = roleManager;
+            //_roleManager = roleManager;
             _user = user;
             _configuration = configuration;
             _emailService = emailService;
@@ -173,43 +173,28 @@ namespace user_and_identity_management_api.Controllers
         }
 
         [HttpPost("login-2FA")]
-        public async Task<IActionResult> LoginWithOTP(string code, string username)
+        public async Task<IActionResult> LoginWithOTP(LoginWithOtp loginWithOTP)
         {
-            var user = await _userManager.FindByNameAsync(username);
-
-            if (user == null)
+            var jwt  = await _user.LoginUserWithJwtTokenAsync(loginWithOTP.Code, loginWithOTP.Username);
+            if (jwt.IsSuccess)
             {
-                return StatusCode(StatusCodes.Status404NotFound,
-                    new Response { Status = "Error", Message = "User not found." });
+                return Ok(jwt);
             }
-
-            var signIn = await _signInManager.TwoFactorSignInAsync("Email", code, false, false);
-
-            if (signIn.Succeeded)
-            {
-                var authClaims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.Name, user.UserName ?? throw new Exception("Username is null for this user")),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                };
-
-                var userRoles = await _userManager.GetRolesAsync(user);
-                foreach (var role in userRoles)
-                {
-                    authClaims.Add(new Claim(ClaimTypes.Role, role));
-                }
-
-                var JWTToken = GetToken(authClaims);
-
-                return Ok(new
-                {
-                    token = new JwtSecurityTokenHandler().WriteToken(JWTToken),
-                    expiration = JWTToken.ValidTo
-                });
-            }
-
             return StatusCode(StatusCodes.Status404NotFound,
                 new Response { Status = "Error", Message = "Invalid OTP code." });
+        }
+
+        [HttpPost]
+        [Route("Refresh-Token")]
+        public async Task<IActionResult> RefreshToken(LoginResponse tokens)
+        {
+            var jwt = await _user.RenewAccessTokenAsync(tokens);
+            if (jwt.IsSuccess)
+            {
+                return Ok(jwt);
+            }
+            return StatusCode(StatusCodes.Status404NotFound,
+                new Response { Status = "Success", Message = $"Invalid code" });
         }
 
         [HttpPost]
